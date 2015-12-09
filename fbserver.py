@@ -32,6 +32,22 @@ class SERVER_STATES(object):
     class CLOSED(object):
         pass
 
+class Queue: 
+    """FIFO Queue
+    Notes: Non thread safe, instance needs to be locked
+    inpired from: http://code.activestate.com/recipes/210459-quick-and-easy-fifo-queue-class/
+    """
+    def __init__(self):
+        self.in_stack = []
+        self.out_stack = []
+    def push(self, obj):
+        self.in_stack.append(obj)
+    def pop(self):
+        if not self.out_stack:
+            while self.in_stack:
+                self.out_stack.append(self.in_stack.pop())
+        return self.out_stack.pop()
+        
 class FooBaseServer(object):
     """FooBase Server
     """
@@ -43,8 +59,9 @@ class FooBaseServer(object):
         self.backlog = backlog
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.state = SERVER_STATES.BEGIN
-        self.data_buffer = {}
         self.query_stats = foosettings.init_query_stats
+        self.writing_queue = Queue()
+        self.writing_queue_lock = multiprocessing.Lock()
         pass
         
     def __str__(self):
@@ -100,20 +117,20 @@ class FooBaseServer(object):
         response_code, response_value = '1110', (key, value)
         data_store_file = open( (self.storage_file), "r")
         try:
-            self.data_buffer = json.load(data_store_file)
+            data_buffer = json.load(data_store_file)
         except ValueError: 
-            self.data_buffer = {}
+            data_buffer = {}
         data_store_file.close()
-        if key in self.data_buffer.keys():
+        if key in data_buffer.keys():
             logging.warning(" > Key : "+str(key)+" is already present."
                          +"\n To replace its content please use the UPDATE command"
                          +"\n To delete the key please use the DELETE command  TACK :)")
             response_code = '0100'
         else:
-            self.data_buffer[key] = value
-            data_store_file = open((self.storage_file), "w+")
-            json.dump(self.data_buffer, data_store_file)
-            data_store_file.close()
+            data_buffer[key] = value
+            self.writing_queue_lock.acquire()
+            self.writing_queue.push(data_buffer)
+            self.writing_queue_lock.release()
             logging.info("      > Data was stored successfully :)")
             response_code = '0000'
         return response_code, response_value
@@ -139,12 +156,12 @@ class FooBaseServer(object):
         response_code, response_value = '1110', None
         data_store_file = open( (self.storage_file), "r")
         try:
-            self.data_buffer = json.load(data_store_file)
-            if not(key in self.data_buffer.keys()):
+            data_buffer = json.load(data_store_file)
+            if not(key in data_buffer.keys()):
                 response_code = '0101'
                 logging.warning(" > Key : "+str(key)+" is not present.  TACK :)")
             else:
-                response_value = self.data_buffer[key]
+                response_value = data_buffer[key]
                 logging.info("      > Data was read successfully :)")
                 response_code = '0001'
         except ValueError: 
@@ -170,20 +187,20 @@ class FooBaseServer(object):
         response_code, response_value = '1110', {'key':key, "new value": None, "old value":None}
         data_store_file = open( (self.storage_file), "r")
         try:
-            self.data_buffer = json.load(data_store_file)
+            data_buffer = json.load(data_store_file)
         except ValueError: 
-            self.data_buffer = {}
+            data_buffer = {}
         data_store_file.close()
-        if not(key in self.data_buffer.keys()):
+        if not(key in data_buffer.keys()):
             logging.warning(" > Key : "+str(key)+" is not present."
                          +"\n To create it please use the CREATE command instead  TACK :)")
             response_code, response_value = '0111' , {'key':key, "new value": value, "old value":None}
         else:
-            old_value = self.data_buffer[key]
-            self.data_buffer[key] = value
-            data_store_file = open((self.storage_file), "w+")
-            json.dump(self.data_buffer, data_store_file)
-            data_store_file.close()
+            old_value = data_buffer[key]
+            data_buffer[key] = value
+            self.writing_queue_lock.acquire()
+            self.writing_queue.push(data_buffer)
+            self.writing_queue_lock.release()
             logging.info("      > Data was updated successfully :)")
             response_code, response_value = '0011' ,{'key':key, "new value": value, "old value":old_value}
         return response_code, response_value
@@ -204,21 +221,21 @@ class FooBaseServer(object):
         response_code, response_value = '1110' , key
         data_store_file = open((self.storage_file), "r")
         try:
-            self.data_buffer = json.load(data_store_file)
-            if not(key in self.data_buffer.keys()):
+            data_buffer = json.load(data_store_file)
+            if not(key in data_buffer.keys()):
                 logging.warning(" > Key : "+str(key)+" is not present."
                              +"\n Things that do not exist cannot be deleted  TACK :)")
                 response_code = '0110'
             else:
-                old_value = self.data_buffer[key]
-                del self.data_buffer[key]
-                data_store_file = open((self.storage_file), "w+")
-                json.dump(self.data_buffer, data_store_file)
-                data_store_file.close()
+                old_value = data_buffer[key]
+                del data_buffer[key]
+                self.writing_queue_lock.acquire()
+                self.writing_queue.push(data_buffer)
+                self.writing_queue_lock.release()
                 logging.info("      > Data was deleted successfully :)")
-                response_code, response_value = '0010', ,{'key':key, "old value":old_value}
+                response_code, response_value = '0010', {'key':key, "old value":old_value}
         except ValueError: 
-            self.data_buffer = {}
+            data_buffer = {}
             response_code = '0110'
         data_store_file.close()
         return response_code, response_value
@@ -229,7 +246,22 @@ class FooBaseServer(object):
         response_code, response_value = self.handle_query(client_qry)
         client_con.sendall('-Response Code: {}\n-Response Message: {}\n-Response Value: {}\n'
                             .format(response_code, foosettings.decode_response[response_code], response_value))
-        client_con.close()    
+        client_con.close()   
+        self.persist_data()
+        pass
+        
+    ## Write data in the queue
+    def persist_data(self):
+        try:
+            while not(self.writing_queue.in_stack == [] and self.writing_queue.out_stack == []):
+                next = self.writing_queue.pop()
+                if not(next is None):
+                    logging.debug(">> Writing data to storage file. Data :"+str(next))
+                    data_store_file = open((self.storage_file), "w+")
+                    json.dump(next, data_store_file)
+                    data_store_file.close()
+        except:
+            pass
         
     ## Launching the server
     def start(self):
@@ -243,7 +275,8 @@ class FooBaseServer(object):
                 client_process = multiprocessing.Process(target=self.handle_client, args=(client_con, client_adr))
                 client_process.deamon = True
                 client_process.start()
-                logging.debug("> Started new process for the client. Process: "+str(client_process))
+                logging.info("> Started new process for the client. Process: "+str(client_process))
+                client_con.close()
                 
         else:
             logging.error("Tried to start FooBase Server without being in state BEGIN. Current state: " + str(self.state))

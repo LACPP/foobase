@@ -3,7 +3,7 @@
 """
 
 # Default (Host, Port)
-(default_host, default_port) = ('localhost', 10000)
+(default_host, default_port) = ('localhost', 10005)
 default_storage_file = "data_store/data.dat"
 default_backlog = 1
 # Logging management
