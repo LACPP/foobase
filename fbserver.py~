@@ -4,7 +4,6 @@
 import json
 import socket
 import foosettings
-import multiprocessing
 
 #    =================== Logging Management =====================
 import logging
@@ -66,21 +65,17 @@ class FooBaseServer(object):
     def handle_query(self, query):
         response_code = '1110'
         response_value = None
-        try:
-            if(self.state == SERVER_STATES.STARTED):
-                command, key, value = self.decode_query(query)
-                logging.info("- Received query (command = "+str(command)+", key = "+str(value)+")...")
-                if command == 'CREATE':
-                    response_code, response_value = self.handle_create_query(key, value)
-                elif command == 'READ':
-                    response_code, response_value = self.handle_read_query(key)
-                elif command == 'UPDATE':
-                    response_code, response_value = self.handle_update_query(key, value)
-                elif command == 'DELETE':
-                    response_code, response_value = self.handle_delete_query(key)   
-        except Exception, e:
-            logging.error("Error handling query : "+ str(e))
-            response_code = '1111'
+        if(self.state == SERVER_STATES.STARTED):
+            command, key, value = self.decode_query(query)
+            logging.info("- Received query (command = "+str(command)+", key = "+str(value)+")...")
+            if command == 'CREATE':
+                response_code, response_value = self.handle_create_query(key, value)
+            elif command == 'READ':
+                response_code, response_value = self.handle_read_query(key)
+            elif command == 'UPDATE':
+                response_code, response_value = self.handle_update_query(key, value)
+            elif command == 'DELETE':
+                response_code, response_value = self.handle_delete_query(key)   
         return response_code, response_value                     
     ## Handling a query    
     # Create key/value pair
@@ -89,7 +84,7 @@ class FooBaseServer(object):
         response_code = '1110'
         response_value = None
         try:
-            response_code, response_value = self.create_query(key, value)
+            self.create_query(key, value)
         except Exception, e:
             print "- ERROR on CREATE : " + str(e)
             response_code = '1111'
@@ -97,7 +92,6 @@ class FooBaseServer(object):
     # Store key/value pair
     def create_query(self, key, value):
         logging.info("- The following data is being stored in the storage file (key = "+str(key)+", value = "+str(value)+")...")
-        response_code, response_value = '1110', (key, value)
         data_store_file = open( (self.storage_file), "r")
         try:
             self.data_buffer = json.load(data_store_file)
@@ -108,15 +102,12 @@ class FooBaseServer(object):
             logging.warning(" > Key : "+str(key)+" is already present."
                          +"\n To replace its content please use the UPDATE command"
                          +"\n To delete the key please use the DELETE command  TACK :)")
-            response_code = '0100'
         else:
             self.data_buffer[key] = value
             data_store_file = open((self.storage_file), "w+")
             json.dump(self.data_buffer, data_store_file)
             data_store_file.close()
             logging.info("      > Data was stored successfully :)")
-            response_code = '0000'
-        return response_code, response_value
         
     # Read value from key 
     def handle_read_query(self, key):
@@ -124,11 +115,12 @@ class FooBaseServer(object):
         response_code = '1110'
         response_value = None
         try:
-            response_code, response_value = self.read_query(key)
-            if(response_value is None):
-                logging.debug("- Oh oh, returned value is None")
+            value = self.read_query(key)
+            if(value is None):
+                logging.info("- Oh oh, returned value is None")
             else:
-                logging.debug("- Returned value is : " + str(response_value))
+                logging.info("- Returned value is : " + str(value))
+            response_value = value
         except Exception, e:
             print "- ERROR on READ : " + str(e)
             response_code = '1111'
@@ -136,22 +128,19 @@ class FooBaseServer(object):
     # Read value from key using the storage file
     def read_query(self, key):
         logging.info("- The following key is being read from the storage file: key = "+str(key)+"...")
-        response_code, response_value = '1110', None
+        value = None
         data_store_file = open( (self.storage_file), "r")
         try:
             self.data_buffer = json.load(data_store_file)
             if not(key in self.data_buffer.keys()):
-                response_code = '0101'
                 logging.warning(" > Key : "+str(key)+" is not present.  TACK :)")
             else:
-                response_value = self.data_buffer[key]
+                value = self.data_buffer[key]
                 logging.info("      > Data was read successfully :)")
-                response_code = '0001'
         except ValueError: 
             logging.warning(" > Data file seems to be empty! :'(")
-            response_code = '0101'
         data_store_file.close()
-        return response_code, response_value
+        return value
         
     # Update key with new value
     def handle_update_query(self, key, value):
@@ -159,7 +148,7 @@ class FooBaseServer(object):
         response_code = '1110'
         response_value = None
         try:
-            response_code, response_value = self.update_query(key, value)
+            self.update_query(key, value)
         except Exception, e:
             print "- ERROR on UPDATE : " + str(e)
             response_code = '1111'
@@ -167,7 +156,6 @@ class FooBaseServer(object):
     # Update key/value pair in storage file
     def update_query(self, key, value):
         logging.info("- The following data is being stored in the storage file (key = "+str(key)+", value = "+str(value)+")...")
-        response_code, response_value = '1110', {'key':key, "new value": None, "old value":None}
         data_store_file = open( (self.storage_file), "r")
         try:
             self.data_buffer = json.load(data_store_file)
@@ -177,23 +165,19 @@ class FooBaseServer(object):
         if not(key in self.data_buffer.keys()):
             logging.warning(" > Key : "+str(key)+" is not present."
                          +"\n To create it please use the CREATE command instead  TACK :)")
-            response_code, response_value = '0111' , {'key':key, "new value": value, "old value":None}
         else:
-            old_value = self.data_buffer[key]
             self.data_buffer[key] = value
             data_store_file = open((self.storage_file), "w+")
             json.dump(self.data_buffer, data_store_file)
             data_store_file.close()
             logging.info("      > Data was updated successfully :)")
-            response_code, response_value = '0011' ,{'key':key, "new value": value, "old value":old_value}
-        return response_code, response_value
     # Delete key
     def handle_delete_query(self, key):
         logging.info("- Processing command DELETE on (key = "+str(key)+")...")
         response_code = '1110'
         response_value = None
         try:
-            response_code, response_value = self.delete_query(key)
+            self.delete_query(key)
         except Exception, e:
             print "- ERROR on DELETE : " + str(e)
             response_code = '1111'
@@ -201,35 +185,23 @@ class FooBaseServer(object):
     # Delete key from storage file
     def delete_query(self, key):
         logging.info("- The following data is being deleted from the storage file (key = "+str(key)+")...")
-        response_code, response_value = '1110' , key
         data_store_file = open((self.storage_file), "r")
         try:
             self.data_buffer = json.load(data_store_file)
             if not(key in self.data_buffer.keys()):
                 logging.warning(" > Key : "+str(key)+" is not present."
                              +"\n Things that do not exist cannot be deleted  TACK :)")
-                response_code = '0110'
             else:
-                old_value = self.data_buffer[key]
                 del self.data_buffer[key]
                 data_store_file = open((self.storage_file), "w+")
                 json.dump(self.data_buffer, data_store_file)
                 data_store_file.close()
                 logging.info("      > Data was deleted successfully :)")
-                response_code, response_value = '0010', ,{'key':key, "old value":old_value}
         except ValueError: 
             self.data_buffer = {}
-            response_code = '0110'
         data_store_file.close()
-        return response_code, response_value
         
-    ## Handle client
-    def handle_client(self, client_con, client_adr):
-        client_qry = client_con.recv(4096).decode()
-        response_code, response_value = self.handle_query(client_qry)
-        client_con.sendall('-Response Code: {}\n-Response Message: {}\n-Response Value: {}\n'
-                            .format(response_code, foosettings.decode_response[response_code], response_value))
-        client_con.close()    
+        
         
     ## Launching the server
     def start(self):
@@ -239,11 +211,11 @@ class FooBaseServer(object):
             self.state = SERVER_STATES.STARTED
             while self.state == SERVER_STATES.STARTED:
                 client_con, client_adr = self.server_socket.accept()
-                logging.info('New connection from [{}]'.format(client_adr))
-                client_process = multiprocessing.Process(target=self.handle_client, args=(client_con, client_adr))
-                client_process.deamon = True
-                client_process.start()
-                logging.debug("> Started new process for the client. Process: "+str(client_process))
+                print 'New connection from [{}]'.format(client_adr)
+                client_qry = client_con.recv(4096).decode()
+                response_code, response_value = self.handle_query(client_qry)
+                client_con.sendall('-Response Code: {}\n-Response Message: {}\n-Response Value: {}\n'.format(response_code, foosettings.decode_response[response_code], response_value))
+                client_con.close()
                 
         else:
             logging.error("Tried to start FooBase Server without being in state BEGIN. Current state: " + str(self.state))
