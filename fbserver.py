@@ -74,11 +74,15 @@ class FooBaseServer(object):
     
     ## Decoding a message
     def decode_query(self, query_string):
+        query_key   = None
         query_value = None
         try:
             query_command, query_key, query_value = query_string.strip().split(' ')
         except:
-            query_command, query_key = query_string.strip().split(' ')
+            try:
+                query_command, query_key = query_string.strip().split(' ')
+            except:
+                query_command = query_string.strip()
         return query_command, query_key, query_value
     def handle_query(self, query):
         response_code = '1110'
@@ -86,6 +90,7 @@ class FooBaseServer(object):
         try:
             if(self.state == SERVER_STATES.STARTED):
                 command, key, value = self.decode_query(query)
+                command = command.upper()
                 logging.info("- Received query (command = "+str(command)+", key = "+str(value)+")...")
                 if command == 'CREATE':
                     response_code, response_value = self.handle_create_query(key, value)
@@ -94,7 +99,9 @@ class FooBaseServer(object):
                 elif command == 'UPDATE':
                     response_code, response_value = self.handle_update_query(key, value)
                 elif command == 'DELETE':
-                    response_code, response_value = self.handle_delete_query(key)   
+                    response_code, response_value = self.handle_delete_query(key)  
+                elif command == 'GENERATE_INTERSECTIONS':
+                    response_code, response_value = self.handle_intersection_query()
         except Exception, e:
             logging.error("Error handling query : "+ str(e))
             response_code = '1111'
@@ -262,7 +269,9 @@ class FooBaseServer(object):
                     data_store_file.close()
         except:
             pass
-        
+    ## Handle intersection query
+    def handle_intersection_query(self):
+        pass
     ## Launching the server
     def start(self):
         if self.state == SERVER_STATES.BEGIN:
@@ -281,8 +290,68 @@ class FooBaseServer(object):
         else:
             logging.error("Tried to start FooBase Server without being in state BEGIN. Current state: " + str(self.state))
             
+class FooBaseServerBasic(FooBaseServer):
+    def __init__(self, host = foosettings.default_host, port = foosettings.default_port, storage_file = foosettings.default_storage_file, backlog = foosettings.default_backlog, basic_intersection_file_path = foosettings.default_basic_intersection_file_path):
+        FooBaseServer.__init__(self, host, port, storage_file, backlog)
+        self.basic_intersection_file_path = basic_intersection_file_path
+
+    def handle_intersection_query(self):
+        logging.info("- Processing command GENERATE_INTERSECTIONS...")
+        response_code = '1110'
+        response_value = None
+        try:
+            response_code, response_value = self.intersection_query()
+        except Exception, e:
+            print "- ERROR on GENERATE_INTERSECTIONS : " + str(e)
+            response_code = '1111'
+        return response_code, response_value
+    def intersection_query(self):
+        logging.info("- Handling intersection query, basic solution...")
+        response_code, response_value = '1110' , None
+        data_store_file = open((self.storage_file), "r")
+        try:
+            intersections = {}
+            data_buffer = json.load(data_store_file)
+            sorted_data_buffer_indexes = sorted(data_buffer)
+            for i in range(len(sorted_data_buffer_indexes)):
+                for j in xrange(i+1,len(sorted_data_buffer_indexes)):
+                    key = sorted_data_buffer_indexes[i]
+                    second_key = sorted_data_buffer_indexes[j]
+                    if not (second_key == key):
+                        intersections[str(key)+' '+str(second_key)] = ''.join(set(data_buffer[key]).intersection(set(data_buffer[second_key])))
+            intersection_file = open(self.basic_intersection_file_path, 'w+')
+            json.dump(intersections, intersection_file)
+            intersection_file.close()
+        except ValueError: 
+            data_buffer = {}
+            response_code = '1111'
+        data_store_file.close()
+        return response_code, response_value
+        
+        
+class FooBaseServerMapReduce(FooBaseServer):
+    def __init__(self, host = foosettings.default_host, port = foosettings.default_port, storage_file = foosettings.default_storage_file, backlog = foosettings.default_backlog):
+        FooBaseServer.__init__(self, host, port, storage_file, backlog)
+
+    def handle_intersection_query(self):
+        logging.info("- Processing command GENERATE_INTERSECTIONS...")
+        response_code = '1110'
+        response_value = None
+        try:
+            response_code, response_value = self.intersection_query()
+        except Exception, e:
+            print "- ERROR on GENERATE_INTERSECTIONS : " + str(e)
+            response_code = '1111'
+        return response_code, response_value
+    def intersection_query(self):
+        return '1110', None
+
+    
+            
 def main():
     print "Running 'main' in fbserver.py ..."
+    bserv = FooBaseServerBasic()
+    bserv.start()
     clear_log()
     server = FooBaseServer()
 #    server.state = SERVER_STATES.STARTED

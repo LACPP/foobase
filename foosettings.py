@@ -8,7 +8,9 @@ default_storage_file = "data_store/data.dat"
 default_backlog = 1
 # Logging management
 LOG_FILE = "logging.log"
-
+#
+default_basic_intersection_file_path = 'data_store/basic_intersections.dat'
+default_mapreduce_intersection_file_path = 'data_store/mapreduce_intersections.dat'
 
 init_query_stats = {
     'CREATE': {'total':0, 'OK': 0, 'KO': 0},
