@@ -3,7 +3,7 @@
 """
 
 # Default (Host, Port)
-(default_host, default_port) = ('localhost', 10005)
+(default_host, default_port) = ('localhost', 10000)
 default_storage_file = "data_store/data.dat"
 default_backlog = 1
 # Logging management
@@ -31,6 +31,6 @@ decode_response = {
     '0101':"READ command unsuccessful.",
     '0111':"UPDATE command unsuccessful.",
     '0110':"DELETE command unsuccessful.",
-    '1110':'Nothing happened.'
+    '1110':'Nothing happened in the database.'
     }    
 

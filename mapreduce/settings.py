@@ -1,9 +1,9 @@
 # set default directory for the input files
-DEFAULT_INP_DIR = "input_files"
+DEFAULT_INP_DIR = "mapreduce/input_files"
 # set default directory for the temporary map files
-DEFAULT_MAP_DIR = "temp_map_files"
+DEFAULT_MAP_DIR = "mapreduce/temp_map_files"
 # set default directory for the output files
-DEFAULT_OUT_DIR = "output_files"
+DEFAULT_OUT_DIR = "mapreduce/output_files"
 # set default number for the map and reduce threads
 DEFAULT_N_MAP = 4
 DEFAULT_N_RED = 4
