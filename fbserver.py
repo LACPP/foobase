@@ -1,6 +1,7 @@
 """FOOBASE Server
 
 """
+import sys
 import json
 import time
 import socket
@@ -352,7 +353,7 @@ class FooBaseServerBasic(FooBaseServer):
 class CommonFriends(MapReduce):
     """CommonFriends example implementation
     """
-    def __init__(self, input_dir, output_dir, n_mappers, n_reducers):
+    def __init__(self, input_dir, output_dir, n_mappers=1, n_reducers=1):
         MapReduce.__init__(self,  input_dir, output_dir, n_mappers, n_reducers)
 
     def mapper(self, key, value):
@@ -421,7 +422,7 @@ class FooBaseServerMapReduce(FooBaseServer):
                 line = str(key)+" # "+' '.join((data_buffer[key].split(',')))+'\n'
                 mr_input_file.write(line)
             mr_input_file.close()
-            common_friends = CommonFriends('mapreduce/input_files', 'mapreduce/output_files', 1, 1)
+            common_friends = CommonFriends('mapreduce/input_files', 'mapreduce/output_files')
             time_mil = int(round(time.time() * 1000))
             common_friends.run()
             time_mil = int(round(time.time() * 1000)) - time_mil
@@ -448,26 +449,13 @@ class FooBaseServerMapReduce(FooBaseServer):
     
             
 def main():
-    print "Running 'main' in fbserver.py ..."
-    bserv = FooBaseServerBasic()
-    bserv.start()
+    host, port = foosettings.default_host, foosettings.default_port
+    if (len(sys.argv) >= 3):
+        host, port = sys.argv[1], int(sys.argv[2])
     clear_log()
-    server = FooBaseServer()
-#    server.state = SERVER_STATES.STARTED
-    print "------- PERFORMING CREATE -------------"
-    server.handle_query("CREATE store 0")
-    print "------- PERFORMING READ -------------"
-    server.handle_query("READ store")
-    print "------- PERFORMING UPDATE -------------"
-    server.handle_query("UPDATE store 1")
-    print "------- PERFORMING READ -------------"
-    server.handle_query("READ store")
-    print "------- PERFORMING DELETE -------------"
-    server.handle_query("DELETE store")
-    print "------- PERFORMING READ -------------"
-    server.handle_query("READ store")
-    print server
-    server.start()
+    fbserv = FooBaseServer(host, port)
+    print fbserv
+    fbserv.start()
     
 if __name__=="__main__":
     main()            
